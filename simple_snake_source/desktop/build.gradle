@@ -1,0 +1,55 @@
+apply plugin: "java"
+
+sourceCompatibility = 11
+targetCompatibility = 11
+
+sourceSets.main.java.srcDirs = [ "src/" ]
+
+project.ext.mainClassName = "com.jga.snake.desktop.DesktopLauncher"
+project.ext.assetsDir = new File("../android/assets");
+
+// ✅ NEW: Task to copy assets to build directory
+task copyAssets(type: Copy) {
+    from project.assetsDir
+    into "$buildDir/assets"
+}
+
+task run(dependsOn: [classes, copyAssets], type: JavaExec) { // ✅ Ensures assets are copied before running
+    mainClass = project.mainClassName
+    classpath = sourceSets.main.runtimeClasspath
+    standardInput = System.in
+    workingDir = file("$buildDir/assets") // ✅ Use the copied assets directory
+    ignoreExitValue = true
+}
+
+task dist(type: Jar) {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE // FIXED: Avoid duplicate files issue
+    from files(sourceSets.main.output.classesDirs)
+    from files(sourceSets.main.output.resourcesDir)
+    from { configurations.runtimeClasspath.collect { zipTree(it) } }
+    from files(project.assetsDir);
+
+    manifest {
+        attributes 'Main-Class': project.mainClassName
+    }
+}
+
+dist.dependsOn classes
+
+eclipse {
+    project {
+        name = appName + "-desktop"
+        linkedResource name: 'assets', type: '2', location: 'PARENT-1-PROJECT_LOC/android/assets'
+    }
+}
+
+task afterEclipseImport(description: "Post processing after project generation", group: "IDE") {
+    doLast {
+        def classpath = new XmlParser().parse(file(".classpath"))
+        new Node(classpath, "classpathentry", [ kind: 'src', path: 'assets' ]);
+        def writer = new FileWriter(file(".classpath"))
+        def printer = new XmlNodePrinter(new PrintWriter(writer))
+        printer.setPreserveWhitespace(true)
+        printer.print(classpath)
+    }
+}
